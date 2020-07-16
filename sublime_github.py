@@ -426,6 +426,7 @@ if git:
         # and False to operate on the current HEAD of the current branch i.e. use a permalink
         # https://help.github.com/en/articles/getting-permanent-links-to-files.
         branch = 'current'
+        tag = False
 
         def run(self, edit):
             if self.branch == "master":
@@ -438,7 +439,7 @@ if git:
             self.run_command(command.split(), self.done_rev_parse)
 
         def done_rev_parse(self, result):
-            if "fatal:" in result:
+            if "fatal:" in result and not self.tag:
                 sublime.error_message(result)
                 return
 
@@ -515,6 +516,8 @@ if git:
         def generate_url(self):
             if self.branch:
                 remote_id = self.remote_branch
+            elif self.tag:
+                remote_id = self.tag
             else:
                 remote_id = self.remote_head
             self.url = "%s/%s/%s%s%s" % (self.repo_url, self.url_type, remote_id, self.relative_path, self.line_nums)
@@ -523,6 +526,21 @@ else:
     class RemoteUrlCommand(sublime_plugin.TextCommand):
         def run(self, edit):
             sublime.error_message("I couldn't find the Git plugin. Please install it, restart Sublime Text, and try again.")
+
+class PermalinkRemoteUrlCommand(RemoteUrlCommand):
+    def run(self, edit):
+        self.__edit = edit
+        command = "git tag --points-at HEAD"
+        self.run_command(command.split(), self.done_tag_points_at)
+
+    def done_tag_points_at(self, result):
+        if "fatal:" in result:
+            sublime.error_message(result)
+        elif result:
+            self.tag = result.splitlines()[0]
+            self.done_rev_parse("origin/" + self.tag)
+        else:
+            super(PermalinkRemoteUrlCommand, self).run(self.__edit)
 
 
 class OpenRemoteUrlCommand(RemoteUrlCommand):
@@ -539,11 +557,11 @@ class OpenRemoteUrlMasterCommand(OpenRemoteUrlCommand):
     branch = 'master'
 
 
-class OpenRemoteUrlPermalinkCommand(OpenRemoteUrlCommand):
+class OpenRemoteUrlPermalinkCommand(PermalinkRemoteUrlCommand):
     branch = False
 
 
-class CopyRemoteUrlCommand(RemoteUrlCommand):
+class CopyRemoteUrlCommand(PermalinkRemoteUrlCommand):
     allows_line_highlights = True
 
     def run(self, edit):
